@@ -224,6 +224,34 @@
                     </div>
                     <span id="val-fps" class="digital-font text-amber-400 font-semibold">-- fps</span>
                 </div>
+                <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center space-x-2">
+                        <div class="flex items-center space-x-1">
+                            <div class="led-bezel">
+                                <div class="led-bulb led-green" id="led-aspect-green"></div>
+                            </div>
+                            <div class="led-bezel">
+                                <div class="led-bulb led-red" id="led-aspect-red"></div>
+                            </div>
+                        </div>
+                        <span class="font-semibold text-gray-200">Aspect Ratio: <span class="text-gray-400 font-normal">16:9</span></span>
+                    </div>
+                    <span id="val-aspect" class="digital-font text-amber-400 font-semibold">--:--</span>
+                </div>
+                <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center space-x-2">
+                        <div class="flex items-center space-x-1">
+                            <div class="led-bezel">
+                                <div class="led-bulb led-green" id="led-res-green"></div>
+                            </div>
+                            <div class="led-bezel">
+                                <div class="led-bulb led-red" id="led-res-red"></div>
+                            </div>
+                        </div>
+                        <span class="font-semibold text-gray-200">Resolution: <span class="text-gray-400 font-normal">&le; 1920x1080</span></span>
+                    </div>
+                    <span id="val-res" class="digital-font text-amber-400 font-semibold text-[11px]">---</span>
+                </div>
             </div>
             <div id="drop-zone" class="drop-zone-dashed rounded-2xl p-4 text-center cursor-pointer bg-black/20 hover:bg-amber-500/5 relative group">
                 <input type="file" id="file-input" accept="video/mp4,.mp4" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-30">
@@ -248,12 +276,18 @@
             const valCodec = document.getElementById('val-codec');
             const valDuration = document.getElementById('val-duration');
             const valFps = document.getElementById('val-fps');
+            const valAspect = document.getElementById('val-aspect');
+            const valRes = document.getElementById('val-res');
             const ledCodecGreen = document.getElementById('led-codec-green');
             const ledCodecRed = document.getElementById('led-codec-red');
             const ledDurationGreen = document.getElementById('led-duration-green');
             const ledDurationRed = document.getElementById('led-duration-red');
             const ledFpsGreen = document.getElementById('led-fps-green');
             const ledFpsRed = document.getElementById('led-fps-red');
+            const ledAspectGreen = document.getElementById('led-aspect-green');
+            const ledAspectRed = document.getElementById('led-aspect-red');
+            const ledResGreen = document.getElementById('led-res-green');
+            const ledResRed = document.getElementById('led-res-red');
             ['dragenter', 'dragover'].forEach(eventName => {
                 dropZone.addEventListener(eventName, (e) => {
                     e.preventDefault();
@@ -272,7 +306,13 @@
                 }
             });
             function resetUI() {
-                [ledCodecGreen, ledCodecRed, ledDurationGreen, ledDurationRed, ledFpsGreen, ledFpsRed].forEach(led => {
+                [
+                    ledCodecGreen, ledCodecRed, 
+                    ledDurationGreen, ledDurationRed, 
+                    ledFpsGreen, ledFpsRed,
+                    ledAspectGreen, ledAspectRed,
+                    ledResGreen, ledResRed
+                ].forEach(led => {
                     led.classList.remove('active');
                 });
                 tunerNeedle.style.transform = 'rotate(-45deg)';
@@ -280,6 +320,8 @@
                 valCodec.textContent = 'READING...';
                 valDuration.textContent = '--:--';
                 valFps.textContent = '-- fps';
+                valAspect.textContent = '--:--';
+                valRes.textContent = '---';
             }
             async function processVideoFile(file) {
                 resetUI();
@@ -313,10 +355,14 @@
                         } else {
                             fps = 30.0; 
                         }
+                        const width = videoTrack.video ? videoTrack.video.width : (videoTrack.track_width || 0);
+                        const height = videoTrack.video ? videoTrack.video.height : (videoTrack.track_height || 0);
                         resolve({
                             codec: codec,
                             duration: durationSec,
-                            fps: fps
+                            fps: fps,
+                            width: width,
+                            height: height
                         });
                     };
                     mp4boxfile.onError = function (e) {
@@ -366,7 +412,9 @@
                     evaluateAndDisplayResults({
                         codec: isMp4 ? 'avc1.42E01E' : 'unknown',
                         duration: duration,
-                        fps: 30.0
+                        fps: 30.0,
+                        width: video.videoWidth || 0,
+                        height: video.videoHeight || 0
                     });
                 };
                 video.onerror = function() {
@@ -374,9 +422,7 @@
                     statusText.textContent = 'READ ERROR';
                     valCodec.textContent = 'INVALID';
                     tunerNeedle.style.transform = 'rotate(-45deg)';
-                    ledCodecRed.classList.add('active');
-                    ledDurationRed.classList.add('active');
-                    ledFpsRed.classList.add('active');
+                    [ledCodecRed, ledDurationRed, ledFpsRed, ledAspectRed, ledResRed].forEach(l => l.classList.add('active'));
                 };
             }
             function evaluateAndDisplayResults(data) {
@@ -386,35 +432,63 @@
                 const isDurationValid = data.duration > 0 && data.duration < maxDuration;
                 const fpsVal = Math.round(data.fps * 10) / 10;
                 const isFpsValid = fpsVal >= 28.5 && fpsVal <= 31.5;
+                const width = data.width || 0;
+                const height = data.height || 0;
+                const ratio = (width > 0 && height > 0) ? (width / height) : 0;
+                const is16by9 = Math.abs(ratio - (16 / 9)) < 0.05 || Math.abs(ratio - (9 / 16)) < 0.05;
+                const isWithinFullHD = width > 0 && height > 0 && width <= 1920 && height <= 1080;
+                const resCategory = classifyResolution(width, height);
                 valCodec.textContent = isH264 ? `H.264 (${data.codec.split('.')[0].toUpperCase()})` : (data.codec || 'NON-H264');
                 valDuration.textContent = formatTime(data.duration);
                 valFps.textContent = `${fpsVal > 0 ? fpsVal.toFixed(1) : '30.0'} fps`;
+                valAspect.textContent = width > 0 ? `${ratio.toFixed(2)} (${is16by9 ? '16:9' : 'CUSTOM'})` : 'N/A';
+                valRes.textContent = resCategory;
                 if (isH264) ledCodecGreen.classList.add('active');
                 else ledCodecRed.classList.add('active');
                 if (isDurationValid) ledDurationGreen.classList.add('active');
                 else ledDurationRed.classList.add('active');
                 if (isFpsValid) ledFpsGreen.classList.add('active');
                 else ledFpsRed.classList.add('active');
+                if (is16by9) ledAspectGreen.classList.add('active');
+                else ledAspectRed.classList.add('active');
+                if (isWithinFullHD) ledResGreen.classList.add('active');
+                else ledResRed.classList.add('active');
+                const isAllMatch = isH264 && isDurationValid && isFpsValid && is16by9 && isWithinFullHD;
                 let needleAngle = 0;
-                const isAllMatch = isH264 && isDurationValid && isFpsValid;
                 if (isAllMatch) {
                     needleAngle = 0; 
                     statusText.textContent = 'IN SPECIFICATION';
                 } else {
                     let offset = 0;
-                    if (!isH264) offset -= 25;
+                    if (!isH264) offset -= 15;
                     if (!isDurationValid) {
                         const overSecs = data.duration - maxDuration;
-                        offset += Math.min(30, 15 + (overSecs / 5));
+                        offset += Math.min(15, 8 + (overSecs / 10));
                     }
                     if (!isFpsValid) {
-                        if (fpsVal < 28.5) offset -= 20;
-                        else if (fpsVal > 31.5) offset += 20;
+                        if (fpsVal < 28.5) offset -= 12;
+                        else if (fpsVal > 31.5) offset += 12;
                     }
+                    if (!is16by9) offset -= 10;
+                    if (!isWithinFullHD) offset += 15;
                     needleAngle = Math.max(-45, Math.min(45, offset));
                     statusText.textContent = 'OUT OF SPECIFICATION';
                 }
                 tunerNeedle.style.transform = `rotate(${needleAngle}deg)`;
+            }
+            function classifyResolution(w, h) {
+                if (w === 0 || h === 0) return 'UNKNOWN';
+                const max = Math.max(w, h);
+                const min = Math.min(w, h);
+                if (max > 1280 || min > 720) {
+                    return `Full HD (${w}x${h})`;
+                } else if (max > 864 || min > 480) {
+                    return `HD (${w}x${h})`;
+                } else if (max > 640 || min > 360) {
+                    return `SD (${w}x${h})`;
+                } else {
+                    return `Low Res (${w}x${h})`;
+                }
             }
             function formatTime(seconds) {
                 if (!seconds || isNaN(seconds)) return '00:00';
